@@ -292,7 +292,7 @@ HTML_TEMPLATE = """
 
     <div class="container">
         <div class="header">
-            <h2>PASSPORT_DATA_EXTRACTOR</h2>
+            <h2>PASSPORT_DATA_AI</h2>
             <p>Awaiting valid ID datastream for visual parsing...</p>
         </div>
 
