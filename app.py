@@ -172,6 +172,7 @@ def process_passport_image(base64_image, mime_type):
     
     payload = {
         "model": "qwen/qwen3-vl-235b-a22b-thinking", # Using a highly capable free vision model
+        "reasoning_effort": "minimal",
         "messages": [
             {
                 "role": "user",
