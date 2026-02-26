@@ -554,7 +554,7 @@ def process_passport_image(base64_image, mime_type):
         }
     }
 
-    response = requests.post("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)", headers=headers, json=payload)
+    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
     response.raise_for_status()
     
     llm_output = response.json()["choices"][0]["message"]["content"].strip()
