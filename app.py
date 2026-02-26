@@ -171,7 +171,7 @@ def process_passport_image(base64_image, mime_type):
     }
     
     payload = {
-        "model": "qwen/qwen3-vl-235b-a22b-thinking", # Using a highly capable free vision model
+        "model": "qwen/qwen3-235b-a22b-2507", # Using a highly capable free vision model
         "messages": [
             {
                 "role": "user",
@@ -182,7 +182,7 @@ def process_passport_image(base64_image, mime_type):
             }
         ],
         "provider": {
-        "order": ["alibaba"],
+        "order": ["deepinfra/fp8", "wandb/bf16"],
         "allow_fallbacks": False,
         "sort": "throughput"
         }
