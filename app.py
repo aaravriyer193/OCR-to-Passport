@@ -484,7 +484,7 @@ def process_passport_image(base64_image, mime_type):
     }
     
     payload = {
-        "model": "allenai/molmo-2-8b", 
+        "model": "google/gemini-3-flash-preview:online", 
         "messages": [
             {
                 "role": "user",
