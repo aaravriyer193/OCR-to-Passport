@@ -4,6 +4,7 @@ import base64
 import requests
 from flask import Flask, request, render_template_string, jsonify
 from dotenv import load_dotenv
+import fitz  # PyMuPDF for handling PDFs
 
 # Load environment variables
 load_dotenv()
@@ -66,7 +67,6 @@ HTML_TEMPLATE = """
             overflow: hidden;
         }
 
-        /* Sci-Fi glowing corners effect */
         .container::before, .container::after {
             content: '';
             position: absolute;
@@ -100,7 +100,6 @@ HTML_TEMPLATE = """
             letter-spacing: 1px;
         }
 
-        /* Custom File Upload Area */
         .upload-area {
             border: 1px dashed rgba(0, 243, 255, 0.4);
             border-radius: 8px;
@@ -138,7 +137,6 @@ HTML_TEMPLATE = """
             transition: all 0.3s ease;
         }
 
-        /* Image Preview Area */
         #previewContainer {
             display: none;
             margin-top: 1.5rem;
@@ -146,11 +144,13 @@ HTML_TEMPLATE = """
             border-radius: 8px;
             border: 1px solid rgba(0, 243, 255, 0.3);
             overflow: hidden;
+            background: rgba(0,0,0,0.5);
+            min-height: 100px; /* So the scanner has room to move on PDFs */
         }
 
         #imagePreview {
             width: 100%;
-            display: block;
+            display: none; /* Hidden by default until we know it's an image */
             filter: contrast(1.1) brightness(0.9);
         }
 
@@ -165,6 +165,7 @@ HTML_TEMPLATE = """
             box-shadow: 0 0 15px 5px var(--neon-cyan), 0 0 30px 15px rgba(0, 243, 255, 0.4);
             animation: scanLaser 2s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
             display: none;
+            z-index: 10;
         }
 
         @keyframes scanLaser {
@@ -172,7 +173,6 @@ HTML_TEMPLATE = """
             100% { top: 100%; }
         }
 
-        /* Button Styling - Fixes Arial default */
         .btn {
             font-family: 'Orbitron', sans-serif;
             background: transparent;
@@ -206,7 +206,6 @@ HTML_TEMPLATE = """
             text-shadow: none;
         }
 
-        /* Modern Loading Text */
         #loadingText {
             display: none;
             text-align: center;
@@ -225,7 +224,6 @@ HTML_TEMPLATE = """
             66% { opacity: 0.9; transform: translateX(1px); }
         }
 
-        /* Results Table - Dark Tech UI */
         #results {
             margin-top: 2rem;
             display: none;
@@ -286,6 +284,15 @@ HTML_TEMPLATE = """
             font-style: italic;
             font-size: 0.9em;
         }
+        
+        #pdfIcon {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            color: var(--neon-cyan);
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 1px;
+        }
     </style>
 </head>
 <body>
@@ -303,13 +310,19 @@ HTML_TEMPLATE = """
                 </svg>
                 <div id="uploadText">
                     <strong>INITIALIZE UPLOAD</strong><br>
-                    <span style="font-size: 0.85rem; color: #8b9bb4; margin-top: 6px; display: block; font-family: 'Inter', sans-serif;">PNG // JPG // JPEG</span>
+                    <span style="font-size: 0.85rem; color: #8b9bb4; margin-top: 6px; display: block; font-family: 'Inter', sans-serif;">PNG // JPG // JPEG // PDF</span>
                 </div>
-                <input type="file" id="imageInput" name="image" accept=".png, .jpg, .jpeg, .webp" required>
+                <input type="file" id="imageInput" name="image" accept=".png, .jpg, .jpeg, .webp, .pdf" required>
             </div>
 
             <div id="previewContainer">
                 <img id="imagePreview" src="" alt="Passport Preview">
+                <div id="pdfIcon">
+                    <svg style="width: 48px; height: 48px; margin-bottom: 10px;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <br>SECURE PDF DOCUMENT READY
+                </div>
                 <div class="scanner" id="scannerLine"></div>
             </div>
 
@@ -327,27 +340,38 @@ HTML_TEMPLATE = """
         const imageInput = document.getElementById('imageInput');
         const previewContainer = document.getElementById('previewContainer');
         const imagePreview = document.getElementById('imagePreview');
+        const pdfIcon = document.getElementById('pdfIcon');
         const uploadText = document.getElementById('uploadText');
         const submitBtn = document.getElementById('submitBtn');
         const loadingText = document.getElementById('loadingText');
         const scannerLine = document.getElementById('scannerLine');
         const resultsDiv = document.getElementById('results');
 
-        // Handle Image Preview
+        // Handle Image & PDF Preview
         imageInput.addEventListener('change', function() {
             const file = this.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    imagePreview.src = e.target.result;
-                    previewContainer.style.display = 'block';
-                    uploadText.innerHTML = `<strong style="color: var(--neon-cyan)">TARGET ACQUIRED:</strong> <br><span style="font-family:'Inter'; font-size:0.9rem;">${file.name}</span>`;
-                    resultsDiv.style.display = 'none';
+                previewContainer.style.display = 'block';
+                resultsDiv.style.display = 'none';
+                uploadText.innerHTML = `<strong style="color: var(--neon-cyan)">TARGET ACQUIRED:</strong> <br><span style="font-family:'Inter'; font-size:0.9rem;">${file.name}</span>`;
+                
+                // If it is a PDF, hide the image tag and show the PDF indicator
+                if (file.type === "application/pdf" || file.name.toLowerCase().endsWith('.pdf')) {
+                    imagePreview.style.display = 'none';
+                    pdfIcon.style.display = 'block';
+                } else {
+                    // Otherwise load the image normally
+                    pdfIcon.style.display = 'none';
+                    imagePreview.style.display = 'block';
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                    }
+                    reader.readAsDataURL(file);
                 }
-                reader.readAsDataURL(file);
             } else {
                 previewContainer.style.display = 'none';
-                uploadText.innerHTML = `<strong>INITIALIZE UPLOAD</strong><br><span style="font-size: 0.85rem; color: #8b9bb4; margin-top: 6px; display: block; font-family: 'Inter', sans-serif;">PNG // JPG // JPEG</span>`;
+                uploadText.innerHTML = `<strong>INITIALIZE UPLOAD</strong><br><span style="font-size: 0.85rem; color: #8b9bb4; margin-top: 6px; display: block; font-family: 'Inter', sans-serif;">PNG // JPG // JPEG // PDF</span>`;
             }
         });
 
@@ -395,7 +419,7 @@ HTML_TEMPLATE = """
                     // Build Cyberpunk Table
                     let tableHTML = '<table><tbody>';
                     for (const [key, value] of Object.entries(extractedData)) {
-                        const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        const formattedKey = key.replace(/_/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase());
                         let displayValue = value ? value : `<span class="empty-field">NULL_VALUE</span>`;
                         
                         tableHTML += `<tr>
@@ -428,11 +452,41 @@ HTML_TEMPLATE = """
 </html>
 """
 
+# --- HELPER: PDF TO IMAGE CONVERTER ---
+def convert_pdf_to_base64_image(base64_data):
+    """Takes a base64 encoded PDF, extracts the first page, and returns a base64 PNG."""
+    try:
+        # Decode the base64 PDF back to raw bytes
+        pdf_bytes = base64.b64decode(base64_data)
+        
+        # Open PDF from memory using PyMuPDF
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        # Grab the first page (index 0)
+        page = doc.load_page(0)
+        
+        # Render the page to a pixmap (image) at a good resolution for AI to read
+        pix = page.get_pixmap(dpi=150)
+        
+        # Convert pixmap to PNG bytes
+        img_bytes = pix.tobytes("png")
+        
+        # Encode back to base64
+        return base64.b64encode(img_bytes).decode('utf-8')
+    except Exception as e:
+        raise ValueError(f"Failed to process PDF file: {str(e)}")
+
+
 # --- CORE EXTRACTION LOGIC ---
 def process_passport_image(base64_image, mime_type):
     """Handles the communication with OpenRouter."""
     if not OPENROUTER_API_KEY:
         raise ValueError("OpenRouter API key is missing.")
+
+    # Check if the incoming data is a PDF. If it is, convert it to an image first!
+    if mime_type == 'application/pdf':
+        base64_image = convert_pdf_to_base64_image(base64_image)
+        mime_type = 'image/png'
 
     prompt = """
     You are a strict data extraction API. Your ONLY purpose is to extract information from the provided passport image and return a raw JSON object. And PLEASE DON'T THINK MUCH
@@ -500,8 +554,7 @@ def process_passport_image(base64_image, mime_type):
         }
     }
 
-    # FIXED: Restored plain URL to prevent "No connection adapters" error
-    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+    response = requests.post("[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)", headers=headers, json=payload)
     response.raise_for_status()
     
     llm_output = response.json()["choices"][0]["message"]["content"].strip()
@@ -524,14 +577,18 @@ def index():
 def web_extract():
     """Endpoint used by the HTML frontend."""
     if 'image' not in request.files or request.files['image'].filename == '':
-        return jsonify({"error": "No image uploaded"}), 400
+        return jsonify({"error": "No file uploaded"}), 400
 
     try:
         file = request.files['image']
-        base64_image = base64.b64encode(file.read()).decode('utf-8')
-        mime_type = file.mimetype or 'image/jpeg'
+        base64_file = base64.b64encode(file.read()).decode('utf-8')
+        mime_type = file.mimetype
         
-        result = process_passport_image(base64_image, mime_type)
+        # If the browser didn't assign a mime type but it has a pdf extension, force it.
+        if file.filename.lower().endswith('.pdf'):
+            mime_type = 'application/pdf'
+            
+        result = process_passport_image(base64_file, mime_type)
         return jsonify({"extracted_data": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -546,15 +603,17 @@ def api_extract():
     try:
         if 'image' in request.files:
             file = request.files['image']
-            base64_image = base64.b64encode(file.read()).decode('utf-8')
-            mime_type = file.mimetype or 'image/jpeg'
+            base64_data = base64.b64encode(file.read()).decode('utf-8')
+            mime_type = file.mimetype
+            if file.filename.lower().endswith('.pdf'):
+                mime_type = 'application/pdf'
         elif request.is_json and 'image_base64' in request.json:
-            base64_image = request.json['image_base64']
+            base64_data = request.json['image_base64']
             mime_type = request.json.get('mime_type', 'image/jpeg')
         else:
             return jsonify({"error": "Must provide 'image' file or JSON with 'image_base64'"}), 400
 
-        result_string = process_passport_image(base64_image, mime_type)
+        result_string = process_passport_image(base64_data, mime_type)
         return jsonify({
             "status": "success",
             "data": json.loads(result_string) 
